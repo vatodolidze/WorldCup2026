@@ -173,9 +173,10 @@
 
   /* BRACKET */
   .bracket-container { overflow-x: auto; }
-  .bracket-scroll { min-width: 1200px; padding-bottom: 20px; }
-  .bracket-rounds { display: flex; gap: 0; align-items: stretch; }
-  .bracket-round { flex: 1; display: flex; flex-direction: column; }
+  .bracket-scroll { min-width: 1400px; padding-bottom: 20px; }
+  .bracket-rounds { display: flex; gap: 4px; align-items: stretch; }
+  .bracket-round { flex: 1; display: flex; flex-direction: column; min-width: 140px; }
+  .bracket-center { flex: 1.2; min-width: 160px; align-items: stretch; }
   .round-label {
     text-align: center;
     font-family: 'Bebas Neue', sans-serif;
@@ -361,6 +362,7 @@
     <button class="nav-btn active" onclick="showPage('groups')">Groups</button>
     <button class="nav-btn" onclick="showPage('bracket')">Bracket</button>
     <button class="nav-btn" onclick="showPage('schedule')">Schedule</button>
+    <button class="nav-btn" onclick="resetData()" style="border-color:rgba(231,76,60,0.4);color:#e74c3c;margin-left:12px" title="Clear all scores">↺ Reset</button>
   </nav>
 </div>
 
@@ -537,10 +539,36 @@ const GROUP_MATCHES = {
   ],
 };
 
-// Points storage
-const pts = {}; // key: groupLetter+teamIndex
-const matchScores = {}; // key: groupLetter+matchIndex
-const bracketScores = {}; // key: matchId + 'h'/'a'
+// ── PERSISTENCE ───────────────────────────────────────────────────────────────
+
+const STORAGE_KEY = 'wc2026_scores';
+const matchScores = {};
+const bracketScores = {};
+
+function saveData() {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ matchScores, bracketScores }));
+  } catch(e) { console.warn('Could not save:', e); }
+}
+
+function loadData() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return;
+    const saved = JSON.parse(raw);
+    if (saved.matchScores)   Object.assign(matchScores,   saved.matchScores);
+    if (saved.bracketScores) Object.assign(bracketScores, saved.bracketScores);
+  } catch(e) { console.warn('Could not load:', e); }
+}
+
+function resetData() {
+  if (!confirm('Reset ALL scores? This cannot be undone.')) return;
+  localStorage.removeItem(STORAGE_KEY);
+  Object.keys(matchScores).forEach(k => delete matchScores[k]);
+  Object.keys(bracketScores).forEach(k => delete bracketScores[k]);
+  renderGroups();
+  renderBracket();
+}
 
 // ── GROUP STANDINGS CALC ───────────────────────────────────────────────────────
 
@@ -636,114 +664,160 @@ function renderGroups() {
 
 function setGroupScore(grp, matchIdx, side, val) {
   matchScores[grp + matchIdx + side] = val;
+  saveData();
   renderGroups();
 }
 
 // ── BRACKET DATA ──────────────────────────────────────────────────────────────
 
+// Official FIFA WC 2026 bracket — left side top→bottom, then right side top→bottom
+// Left R32: M1–M8, Right R32: M9–M16
+// R16: M1+M2→L1, M3+M4→L2, M5+M6→L3, M7+M8→L4 (left); M9+M10→R1, M11+M12→R2, M13+M14→R3, M15+M16→R4 (right)
+// QF: L1+L2→QF1, L3+L4→QF2, R1+R2→QF3, R3+R4→QF4
+// SF: QF1+QF2→SF1, QF3+QF4→SF2 → FINAL
+
 const BRACKET_ROUNDS = [
   {
-    id: 'r32', label: 'Round of 32', matches: [
-      {id:'m73',home:'2nd A',away:'2nd B',date:'Jun 28',venue:'Los Angeles'},
-      {id:'m74',home:'1st E',away:'3rd ABCDF',date:'Jun 29',venue:'Boston'},
-      {id:'m75',home:'1st F',away:'2nd C',date:'Jun 29',venue:'Monterrey'},
-      {id:'m76',home:'1st C',away:'2nd F',date:'Jun 29',venue:'Houston'},
-      {id:'m77',home:'1st I',away:'3rd CDFGH',date:'Jun 30',venue:'New York'},
-      {id:'m78',home:'2nd E',away:'2nd I',date:'Jun 30',venue:'Dallas'},
-      {id:'m79',home:'1st A',away:'3rd CEFHI',date:'Jun 30',venue:'Mexico City'},
-      {id:'m80',home:'1st L',away:'3rd EHIJK',date:'Jul 1',venue:'Atlanta'},
-      {id:'m81',home:'1st D',away:'3rd BEFIJ',date:'Jul 1',venue:'San Francisco'},
-      {id:'m82',home:'1st G',away:'3rd AEHIJ',date:'Jul 1',venue:'Seattle'},
-      {id:'m83',home:'2nd K',away:'2nd L',date:'Jul 2',venue:'Toronto'},
-      {id:'m84',home:'1st H',away:'2nd J',date:'Jul 2',venue:'Los Angeles'},
-      {id:'m85',home:'1st B',away:'3rd EFGIJ',date:'Jul 2',venue:'Vancouver'},
-      {id:'m86',home:'1st J',away:'2nd H',date:'Jul 3',venue:'Miami'},
-      {id:'m87',home:'1st K',away:'3rd DEIJL',date:'Jul 3',venue:'Kansas City'},
-      {id:'m88',home:'2nd D',away:'2nd G',date:'Jul 3',venue:'Dallas'},
+    id: 'r32L', label: 'Round of 32', side: 'left', matches: [
+      {id:'m1', home:'1st E',  away:'3rd ABCDF', date:'Jun 29', venue:'Boston'},
+      {id:'m2', home:'1st I',  away:'3rd CDFGH', date:'Jun 30', venue:'New York'},
+      {id:'m3', home:'2nd A',  away:'2nd B',     date:'Jun 28', venue:'Los Angeles'},
+      {id:'m4', home:'1st F',  away:'2nd C',     date:'Jun 29', venue:'Monterrey'},
+      {id:'m5', home:'2nd K',  away:'2nd L',     date:'Jul 2',  venue:'Toronto'},
+      {id:'m6', home:'1st H',  away:'2nd J',     date:'Jul 2',  venue:'Los Angeles'},
+      {id:'m7', home:'1st D',  away:'3rd BEFIJ', date:'Jul 1',  venue:'San Francisco'},
+      {id:'m8', home:'1st G',  away:'3rd AEHIJ', date:'Jul 1',  venue:'Seattle'},
     ]
   },
   {
-    id: 'r16', label: 'Round of 16', matches: [
-      {id:'m89',home:'W74',away:'W77',date:'Jul 4',venue:'Philadelphia'},
-      {id:'m90',home:'W73',away:'W75',date:'Jul 4',venue:'Houston'},
-      {id:'m91',home:'W76',away:'W79',date:'Jul 5',venue:'Mexico City'},
-      {id:'m92',home:'W78',away:'W80',date:'Jul 5',venue:'Dallas'},
-      {id:'m93',home:'W81',away:'W83',date:'Jul 6',venue:'Los Angeles'},
-      {id:'m94',home:'W82',away:'W84',date:'Jul 6',venue:'Miami'},
-      {id:'m95',home:'W85',away:'W88',date:'Jul 7',venue:'Atlanta'},
-      {id:'m96',home:'W86',away:'W87',date:'Jul 7',venue:'Seattle'},
+    id: 'r16L', label: 'Round of 16', side: 'left', matches: [
+      {id:'m17', home:'W M1', away:'W M2', date:'Jul 4', venue:'Philadelphia'},
+      {id:'m18', home:'W M3', away:'W M4', date:'Jul 4', venue:'Houston'},
+      {id:'m19', home:'W M5', away:'W M6', date:'Jul 6', venue:'Miami'},
+      {id:'m20', home:'W M7', away:'W M8', date:'Jul 6', venue:'Los Angeles'},
     ]
   },
   {
-    id: 'qf', label: 'Quarter-Finals', matches: [
-      {id:'m97',home:'W89',away:'W91',date:'Jul 10',venue:'New York'},
-      {id:'m98',home:'W90',away:'W92',date:'Jul 11',venue:'Dallas'},
-      {id:'m99',home:'W93',away:'W95',date:'Jul 12',venue:'Los Angeles'},
-      {id:'m100',home:'W94',away:'W96',date:'Jul 11',venue:'Kansas City'},
+    id: 'qfL', label: 'Quarter-Finals', side: 'left', matches: [
+      {id:'m25', home:'W M17', away:'W M18', date:'Jul 10', venue:'New York'},
+      {id:'m26', home:'W M19', away:'W M20', date:'Jul 11', venue:'Dallas'},
     ]
   },
   {
-    id: 'sf', label: 'Semi-Finals', matches: [
-      {id:'m101',home:'W97',away:'W98',date:'Jul 14',venue:'Dallas'},
-      {id:'m102',home:'W99',away:'W100',date:'Jul 15',venue:'Atlanta'},
+    id: 'sf_col', label: 'Semi-Finals', side: 'center', matches: [
+      {id:'m29', home:'W M25', away:'W M26', date:'Jul 14', venue:'Dallas'},
+      {id:'m30', home:'W M27', away:'W M28', date:'Jul 15', venue:'Atlanta'},
     ]
   },
   {
-    id: 'final_col', label: 'FINAL', matches: [
-      {id:'m104',home:'W101',away:'W102',date:'Jul 19',venue:'New York (MetLife)'},
+    id: 'final_col', label: '🏆 FINAL', side: 'center', matches: [
+      {id:'m31', home:'W M29', away:'W M30', date:'Jul 19', venue:'New York'},
     ]
-  }
+  },
+  {
+    id: 'qfR', label: 'Quarter-Finals', side: 'right', matches: [
+      {id:'m27', home:'W M21', away:'W M22', date:'Jul 12', venue:'Los Angeles'},
+      {id:'m28', home:'W M23', away:'W M24', date:'Jul 11', venue:'Kansas City'},
+    ]
+  },
+  {
+    id: 'r16R', label: 'Round of 16', side: 'right', matches: [
+      {id:'m21', home:'W M9',  away:'W M10', date:'Jul 5', venue:'Mexico City'},
+      {id:'m22', home:'W M11', away:'W M12', date:'Jul 5', venue:'Dallas'},
+      {id:'m23', home:'W M13', away:'W M14', date:'Jul 7', venue:'Atlanta'},
+      {id:'m24', home:'W M15', away:'W M16', date:'Jul 7', venue:'Seattle'},
+    ]
+  },
+  {
+    id: 'r32R', label: 'Round of 32', side: 'right', matches: [
+      {id:'m9',  home:'1st C',  away:'2nd F',     date:'Jun 29', venue:'Houston'},
+      {id:'m10', home:'2nd E',  away:'2nd I',     date:'Jun 30', venue:'Dallas'},
+      {id:'m11', home:'1st A',  away:'3rd CEFHI', date:'Jun 30', venue:'Mexico City'},
+      {id:'m12', home:'1st L',  away:'3rd EHIJK', date:'Jul 1',  venue:'Atlanta'},
+      {id:'m13', home:'1st J',  away:'2nd H',     date:'Jul 3',  venue:'Miami'},
+      {id:'m14', home:'2nd D',  away:'2nd G',     date:'Jul 3',  venue:'Dallas'},
+      {id:'m15', home:'1st B',  away:'3rd EFGIJ', date:'Jul 2',  venue:'Vancouver'},
+      {id:'m16', home:'1st K',  away:'3rd DEIJL', date:'Jul 3',  venue:'Kansas City'},
+    ]
+  },
 ];
 
 // ── RENDER BRACKET ────────────────────────────────────────────────────────────
 
+function makeBracketMatch(match) {
+  const kh = match.id + 'h', ka = match.id + 'a';
+  const sh = bracketScores[kh] !== undefined ? bracketScores[kh] : '';
+  const sa = bracketScores[ka] !== undefined ? bracketScores[ka] : '';
+  const isTbd = name => name.startsWith('W ') || /^[123](st|nd|rd)/.test(name) || /^\d(nd|rd|th)/.test(name);
+  const homeClass = isTbd(match.home) ? 'tbd' : '';
+  const awayClass = isTbd(match.away) ? 'tbd' : '';
+  const homeDisplay = homeClass ? match.home : flag(match.home);
+  const awayDisplay = awayClass ? match.away : flag(match.away);
+  return `<div class="bracket-match">
+    <div class="bracket-team">
+      <span class="bracket-team-name ${homeClass}">${homeDisplay}</span>
+      <input class="bracket-score" type="number" min="0" max="20" value="${sh}" placeholder="—"
+        onchange="setBracketScore('${match.id}','h',this.value)" onclick="this.select()">
+    </div>
+    <div class="bracket-team">
+      <span class="bracket-team-name ${awayClass}">${awayDisplay}</span>
+      <input class="bracket-score" type="number" min="0" max="20" value="${sa}" placeholder="—"
+        onchange="setBracketScore('${match.id}','a',this.value)" onclick="this.select()">
+    </div>
+    <div class="bracket-match-info">${match.date} · ${match.venue}</div>
+  </div>`;
+}
+
 function renderBracket() {
   const container = document.getElementById('bracket-container');
+
+  // Split rounds by side
+  const get = id => BRACKET_ROUNDS.find(r => r.id === id);
+  const leftRounds  = [get('r32L'), get('r16L'), get('qfL')];
+  const centerRounds = [get('sf_col'), get('final_col')];
+  const rightRounds = [get('qfR'), get('r16R'), get('r32R')];
+
+  function renderColumn(round, extraStyle = '') {
+    const matchesHtml = round.matches.map(m => makeBracketMatch(m)).join('');
+    return `<div class="bracket-round" style="${extraStyle}">
+      <div class="round-label">${round.label}</div>
+      <div class="round-matches">${matchesHtml}</div>
+    </div>`;
+  }
+
   let html = `<div class="bracket-rounds">`;
 
-  BRACKET_ROUNDS.forEach(round => {
-    html += `<div class="bracket-round">
-      <div class="round-label">${round.label}</div>
-      <div class="round-matches">`;
+  // Left side: R32 → R16 → QF (left to right, converging inward)
+  leftRounds.forEach(r => { html += renderColumn(r); });
 
-    round.matches.forEach(match => {
-      const kh = match.id + 'h', ka = match.id + 'a';
-      const sh = bracketScores[kh] !== undefined ? bracketScores[kh] : '';
-      const sa = bracketScores[ka] !== undefined ? bracketScores[ka] : '';
-      const homeClass = match.home.startsWith('W') || match.home.match(/^\d/) || match.home.match(/^[123](st|nd|rd)/) ? 'tbd' : '';
-      const awayClass = match.away.startsWith('W') || match.away.match(/^\d/) || match.away.match(/^[123](st|nd|rd)/) ? 'tbd' : '';
-      const homeDisplay = homeClass ? match.home : flag(match.home);
-      const awayDisplay = awayClass ? match.away : flag(match.away);
-
-      html += `<div class="bracket-match">
-        <div class="bracket-team">
-          <span class="bracket-team-name ${homeClass}">${homeDisplay}</span>
-          <input class="bracket-score" type="number" min="0" max="20" value="${sh}" placeholder="—"
-            onchange="setBracketScore('${match.id}','h',this.value)" onclick="this.select()">
-        </div>
-        <div class="bracket-team">
-          <span class="bracket-team-name ${awayClass}">${awayDisplay}</span>
-          <input class="bracket-score" type="number" min="0" max="20" value="${sa}" placeholder="—"
-            onchange="setBracketScore('${match.id}','a',this.value)" onclick="this.select()">
-        </div>
-        <div class="bracket-match-info">${match.date} · ${match.venue}</div>
-      </div>`;
-    });
-
-    html += `</div></div>`;
-  });
-
-  // Champion
-  html += `<div class="bracket-round" style="max-width:180px">
-    <div class="round-label" style="color:var(--gold-light)">🏆 CHAMPION</div>
+  // Center: SF + Final + Champion
+  html += `<div class="bracket-round bracket-center">
+    <div class="round-label">Semi-Finals</div>
     <div class="round-matches">
-      <div class="champion-box">
-        <span class="trophy">🏆</span>
-        <div class="label">WORLD CHAMPION</div>
-        <div class="team" id="champion-name" style="min-height:24px;font-size:13px">—</div>
-      </div>
+      ${makeBracketMatch(get('sf_col').matches[0])}
+    </div>
+    <div class="round-label" style="margin-top:16px">🏆 Final</div>
+    <div class="round-matches">
+      ${makeBracketMatch(get('final_col').matches[0])}
+    </div>
+    <div class="round-label" style="margin-top:16px">Semi-Finals</div>
+    <div class="round-matches">
+      ${makeBracketMatch(get('sf_col').matches[1])}
     </div>
   </div>`;
+
+  // Champion box
+  html += `<div class="bracket-round" style="max-width:160px;justify-content:center;display:flex;flex-direction:column;align-items:center;">
+    <div class="round-label" style="color:var(--gold-light);text-align:center">🏆 Champion</div>
+    <div class="champion-box" style="margin-top:8px">
+      <span class="trophy">🏆</span>
+      <div class="label">WORLD CHAMPION</div>
+      <div class="team" id="champion-name" style="min-height:24px;font-size:13px">—</div>
+    </div>
+  </div>`;
+
+  // Right side: QF → R16 → R32 (left to right, diverging outward)
+  rightRounds.forEach(r => { html += renderColumn(r); });
 
   html += `</div>`;
   container.innerHTML = html;
@@ -751,7 +825,7 @@ function renderBracket() {
 
 function setBracketScore(matchId, side, val) {
   bracketScores[matchId + side] = val;
-  // Could calculate winner here
+  saveData();
 }
 
 // ── SCHEDULE DATA ─────────────────────────────────────────────────────────────
@@ -950,6 +1024,7 @@ function showPage(id) {
 
 // ── INIT ──────────────────────────────────────────────────────────────────────
 
+loadData();
 renderGroups();
 renderBracket();
 </script>
